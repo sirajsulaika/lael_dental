@@ -1,22 +1,14 @@
-import { useState, useRef, useEffect } from "react";
-import initialSchools from "./data/schools.json";
-import initialStudents from "./data/students.json";
-import initialScreenings from "./data/screenings.json";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { api } from "./api";
 
-const loadData = (key, fallback) => {
-  try {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : fallback;
-  } catch {
-    return fallback;
-  }
-};
+const AUTH_HASH_U = "6029fa709e2c88329604ca75c8aa5eaafd4219dfb69fb3a35d0575ceddfc15ee";
+const AUTH_HASH_P = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
+const AUTH_KEY = "dental_auth";
 
-const saveData = (key, data) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(data));
-  } catch { }
-};
+async function sha256(str) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
 
 // const COLORS = {
 //   teal: { bg: "#E1F5EE", border: "#1D9E75", text: "#085041", accent: "#1D9E75" },
@@ -143,6 +135,21 @@ const css = `
   .photo-slot img { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
   .photo-label { font-size: 10px; color: var(--color-text-secondary); text-align: center; padding: 4px; z-index: 1; }
   .photo-icon { font-size: 18px; z-index: 1; }
+  .photo-menu { position: absolute; inset: 0; z-index: 2; background: rgba(255,255,255,0.95); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; border-radius: 8px; }
+  .photo-menu-btn { padding: 6px 10px; font-size: 11px; font-weight: 500; border: 0.5px solid var(--color-border-secondary, rgba(0,0,0,0.2)); border-radius: 6px; background: #fff; cursor: pointer; width: 85%; text-align: center; color: var(--color-text-primary); transition: background 0.1s; }
+  .photo-menu-btn:hover { background: #E1F5EE; border-color: #1D9E75; color: #085041; }
+  .photo-size { font-size: 9px; color: #888780; position: absolute; bottom: 2px; right: 4px; z-index: 2; }
+  .camera-overlay { position: fixed; inset: 0; z-index: 300; background: #000; display: flex; flex-direction: column; }
+  .camera-top { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: rgba(0,0,0,0.6); color: #fff; }
+  .camera-top span { font-size: 14px; font-weight: 500; }
+  .camera-close { background: none; border: none; color: #fff; font-size: 28px; cursor: pointer; padding: 0 4px; }
+  .camera-view { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .camera-view video { width: 100%; height: 100%; object-fit: cover; }
+  .camera-bottom { display: flex; align-items: center; justify-content: center; gap: 24px; padding: 20px; background: rgba(0,0,0,0.6); }
+  .camera-capture { width: 64px; height: 64px; border-radius: 50%; border: 4px solid #fff; background: rgba(255,255,255,0.2); cursor: pointer; transition: background 0.15s; }
+  .camera-capture:hover { background: rgba(255,255,255,0.4); }
+  .camera-capture:active { background: rgba(255,255,255,0.6); transform: scale(0.93); }
+  .camera-switch { background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; padding: 8px; }
   .pdf-preview { background: #fff; border: 0.5px solid var(--color-border-tertiary); border-radius: 12px; padding: 24px; max-width: 680px; margin: 0 auto; }
   .pdf-header { text-align: center; border-bottom: 2px solid #1D9E75; padding-bottom: 12px; margin-bottom: 16px; }
   .pdf-logo-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 6px; }
@@ -203,13 +210,44 @@ const css = `
   .camp-checkbox.checked { background: #E1F5EE; }
   .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .tag { font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 0.5px solid var(--color-border-secondary); color: var(--color-text-secondary); background: var(--color-background-secondary); }
+  .login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #E1F5EE 0%, #f5f4f0 50%, #E6F1FB 100%); padding: 1.5rem; }
+  .login-card { background: #fff; border-radius: 16px; padding: 2rem; width: 100%; max-width: 380px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); border: 0.5px solid rgba(0,0,0,0.08); }
+  .login-logo { text-align: center; margin-bottom: 1.5rem; }
+  .login-logo-text { font-size: 28px; font-weight: 700; font-family: serif; letter-spacing: 2px; color: #085041; }
+  .login-logo-sub { font-size: 13px; color: #5F5E5A; margin-top: 4px; }
+  .login-logo-addr { font-size: 11px; color: #888780; margin-top: 2px; }
+  .login-error { background: #FCEBEB; color: #791F1F; border: 0.5px solid #E24B4A; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 1rem; text-align: center; }
+  .login-btn { width: 100%; padding: 12px; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; border: none; background: #1D9E75; color: #fff; transition: background 0.15s; }
+  .login-btn:hover { background: #0F6E56; }
+  .login-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+  .mobile-header { display: none; }
+  .menu-overlay { display: none; }
   @media (max-width: 640px) {
     .sidebar { display: none; }
+    .sidebar.mobile-open { display: flex; position: fixed; top: 0; left: 0; bottom: 0; width: 260px; z-index: 200; box-shadow: 4px 0 24px rgba(0,0,0,0.15); animation: slideIn 0.2s ease; }
+    .menu-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 199; }
+    .menu-overlay.open { display: block; }
+    .mobile-header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--color-background-primary, #fff); border-bottom: 0.5px solid var(--color-border-tertiary, rgba(0,0,0,0.12)); }
+    .hamburger { background: none; border: none; font-size: 22px; cursor: pointer; padding: 4px; color: var(--color-text-primary); display: flex; align-items: center; }
+    .mobile-header-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); flex: 1; }
+    .mobile-header-date { font-size: 11px; color: var(--color-text-secondary); }
+    .topbar { display: none; }
+    .content { padding: 1rem; }
     .grid2 { grid-template-columns: 1fr; }
     .photo-grid { grid-template-columns: repeat(3, 1fr); }
     .pdf-finding-grid { grid-template-columns: 1fr 1fr; }
     .pdf-field-grid { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .kpi-value { font-size: 18px; }
+    .page-title { font-size: 16px; }
+    .camp-card { grid-template-columns: 1fr; }
+    .camp-left, .camp-middle, .camp-right { border-right: none; border-bottom: 1px solid #ccc; }
+    .camp-right { border-bottom: none; }
   }
+  @keyframes slideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+  .fab { position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px; border-radius: 50%; background: #1D9E75; color: #fff; border: none; font-size: 28px; cursor: pointer; box-shadow: 0 4px 14px rgba(29,158,117,0.4); display: flex; align-items: center; justify-content: center; z-index: 90; transition: background 0.15s, transform 0.15s; }
+  .fab:hover { background: #0F6E56; transform: scale(1.08); }
+  .fab:active { transform: scale(0.95); }
 `;
 
 function RadioGroup({ options, value, onChange }) {
@@ -271,41 +309,176 @@ function HBar({ label, value, max, color }) {
   );
 }
 
+function compressImage(file, maxKB = 200) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let w = img.width, h = img.height;
+      const maxDim = 1024;
+      if (w > maxDim || h > maxDim) {
+        const ratio = Math.min(maxDim / w, maxDim / h);
+        w = Math.round(w * ratio);
+        h = Math.round(h * ratio);
+      }
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+      let quality = 0.8;
+      let result = canvas.toDataURL("image/jpeg", quality);
+      while (result.length > maxKB * 1370 && quality > 0.1) {
+        quality -= 0.1;
+        result = canvas.toDataURL("image/jpeg", quality);
+      }
+      resolve(result);
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function CameraViewfinder({ slot, onCapture, onClose }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [facingMode, setFacingMode] = useState("environment");
+  const [error, setError] = useState("");
+
+  const startCamera = useCallback(async (facing) => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 960 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setError("");
+    } catch {
+      setError("Camera access denied. Please allow camera permission and try again.");
+    }
+  }, []);
+
+  useEffect(() => {
+    startCamera(facingMode);
+    return () => {
+      if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
+    };
+  }, [facingMode, startCamera]);
+
+  const handleCapture = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    canvas.toBlob(
+      (blob) => { if (blob) onCapture(blob); },
+      "image/jpeg",
+      0.9
+    );
+  };
+
+  const toggleFacing = () => setFacingMode((f) => (f === "environment" ? "user" : "environment"));
+
+  return (
+    <div className="camera-overlay">
+      <div className="camera-top">
+        <span>{slot}</span>
+        <button className="camera-close" onClick={onClose}>×</button>
+      </div>
+      <div className="camera-view">
+        {error ? (
+          <div style={{ color: "#fff", textAlign: "center", padding: 24, fontSize: 14 }}>{error}</div>
+        ) : (
+          <video ref={videoRef} autoPlay playsInline muted />
+        )}
+      </div>
+      <div className="camera-bottom">
+        <button className="camera-switch" onClick={toggleFacing}>🔄</button>
+        <button className="camera-capture" onClick={handleCapture} disabled={!!error} />
+        <div style={{ width: 40 }} />
+      </div>
+    </div>
+  );
+}
+
 function PhotoCapture({ photos, setPhotos }) {
   const slots = ["Front View", "Upper Arch", "Lower Arch", "Tongue", "Lesion"];
-  const fileRefs = useRef({});
+  const uploadRefs = useRef({});
+  const [activeMenu, setActiveMenu] = useState(null);
+  const [cameraSlot, setCameraSlot] = useState(null);
 
-  const handleFile = (slot, e) => {
+  const handleFile = async (slot, e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => setPhotos((p) => ({ ...p, [slot]: ev.target.result }));
-    reader.readAsDataURL(file);
+    const compressed = await compressImage(file);
+    setPhotos((p) => ({ ...p, [slot]: compressed }));
+    setActiveMenu(null);
+    e.target.value = "";
+  };
+
+  const handleCameraCapture = async (blob) => {
+    const compressed = await compressImage(blob);
+    setPhotos((p) => ({ ...p, [cameraSlot]: compressed }));
+    setCameraSlot(null);
+    setActiveMenu(null);
+  };
+
+  const photoSize = (dataUrl) => {
+    const kb = Math.round((dataUrl.length * 3) / 4 / 1024);
+    return `${kb}KB`;
   };
 
   return (
-    <div className="photo-grid">
-      {slots.map((slot) => (
-        <div key={slot} className="photo-slot" onClick={() => fileRefs.current[slot]?.click()}>
-          {photos[slot] ? (
-            <img src={photos[slot]} alt={slot} />
-          ) : (
-            <>
-              <span className="photo-icon">📷</span>
-              <span className="photo-label">{slot}</span>
-            </>
-          )}
-          <input
-            ref={(el) => (fileRefs.current[slot] = el)}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            style={{ display: "none" }}
-            onChange={(e) => handleFile(slot, e)}
-          />
-        </div>
-      ))}
-    </div>
+    <>
+      {cameraSlot && (
+        <CameraViewfinder
+          slot={cameraSlot}
+          onCapture={handleCameraCapture}
+          onClose={() => setCameraSlot(null)}
+        />
+      )}
+      <div className="photo-grid">
+        {slots.map((slot) => (
+          <div key={slot} className="photo-slot" onClick={() => { if (!photos[slot] && activeMenu !== slot) setActiveMenu(slot); }}>
+            {photos[slot] ? (
+              <>
+                <img src={photos[slot]} alt={slot} />
+                <span className="photo-size">{photoSize(photos[slot])}</span>
+                <div className="photo-menu" style={{ opacity: 0, transition: "opacity 0.15s" }}
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = 1; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = 0; }}
+                  onClick={(e) => e.stopPropagation()}>
+                  <button className="photo-menu-btn" onClick={() => setCameraSlot(slot)}>Retake</button>
+                  <button className="photo-menu-btn" onClick={() => setPhotos((p) => { const n = { ...p }; delete n[slot]; return n; })} style={{ color: "#A32D2D" }}>Remove</button>
+                </div>
+              </>
+            ) : activeMenu === slot ? (
+              <div className="photo-menu" onClick={(e) => e.stopPropagation()}>
+                <span style={{ fontSize: 10, fontWeight: 500, color: "#085041", marginBottom: 2 }}>{slot}</span>
+                <button className="photo-menu-btn" onClick={() => setCameraSlot(slot)}>📷 Camera</button>
+                <button className="photo-menu-btn" onClick={() => uploadRefs.current[slot]?.click()}>📁 Upload</button>
+                <button className="photo-menu-btn" onClick={() => setActiveMenu(null)} style={{ color: "#888", border: "none", fontSize: 10 }}>Cancel</button>
+              </div>
+            ) : (
+              <>
+                <span className="photo-icon">📷</span>
+                <span className="photo-label">{slot}</span>
+              </>
+            )}
+            <input
+              ref={(el) => (uploadRefs.current[slot] = el)}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => handleFile(slot, e)}
+            />
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -443,9 +616,12 @@ function PDFReportCard({ screening, student, school, onClose }) {
   );
 }
 
-function ScreeningForm({ students, schools, onSave, onClose }) {
+function ScreeningForm({ students, schools, onSave, onClose, onAddStudent }) {
   const [step, setStep] = useState(1);
+  const [schoolFilter, setSchoolFilter] = useState("");
   const [studentId, setStudentId] = useState("");
+  const [showAddStudent, setShowAddStudent] = useState(false);
+  const [newStudentForm, setNewStudentForm] = useState({ schoolId: "", name: "", class: "", section: "", gender: "Male", dob: "", parent: "", mobile: "" });
   const [findings, setFindings] = useState({
     chiefComplaint: "",
     cavityTeeth: [],
@@ -469,8 +645,18 @@ function ScreeningForm({ students, schools, onSave, onClose }) {
   const score = calcScore(findings);
   const sid = useRef(genScreeningId());
 
+  const filteredStudents = schoolFilter ? students.filter((s) => s.schoolId === schoolFilter) : [];
   const student = students.find((s) => s.id === studentId);
   const school = student ? schools.find((sc) => sc.id === student.schoolId) : null;
+
+  const handleAddStudent = async () => {
+    if (!newStudentForm.name || !newStudentForm.schoolId) return;
+    const created = await onAddStudent(newStudentForm);
+    setSchoolFilter(created.schoolId);
+    setStudentId(created.id);
+    setShowAddStudent(false);
+    setNewStudentForm({ schoolId: "", name: "", class: "", section: "", gender: "Male", dob: "", parent: "", mobile: "" });
+  };
 
   const toggleCavityTooth = (id) => {
     setFindings((f) => {
@@ -532,14 +718,31 @@ function ScreeningForm({ students, schools, onSave, onClose }) {
         {step === 1 && (
           <div>
             <div className="form-group">
-              <label className="form-label">Select Student</label>
-              <select className="form-select" value={studentId} onChange={(e) => setStudentId(e.target.value)}>
-                <option value="">— Choose student —</option>
-                {students.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name} (Class {s.class}{s.section})</option>
+              <label className="form-label">Select School</label>
+              <select className="form-select" value={schoolFilter} onChange={(e) => { setSchoolFilter(e.target.value); setStudentId(""); }}>
+                <option value="">— Choose school first —</option>
+                {schools.map((sc) => (
+                  <option key={sc.id} value={sc.id}>{sc.name} — {sc.district}</option>
                 ))}
               </select>
             </div>
+            {schoolFilter && (
+              <div className="form-group">
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>Select Student</label>
+                  <button className="btn btn-sm" style={{ fontSize: 11, padding: "3px 10px" }} onClick={() => { setShowAddStudent(true); setNewStudentForm((f) => ({ ...f, schoolId: schoolFilter })); }}>+ Add New</button>
+                </div>
+                <select className="form-select" value={studentId} onChange={(e) => setStudentId(e.target.value)}>
+                  <option value="">— Choose student —</option>
+                  {filteredStudents.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} (Class {s.class} – {s.section})</option>
+                  ))}
+                </select>
+                {filteredStudents.length === 0 && (
+                  <div style={{ fontSize: 12, color: "#BA7517", marginTop: 6 }}>No students in this school. Add one using "+ Add New" above.</div>
+                )}
+              </div>
+            )}
             {student && (
               <div className="card" style={{ marginTop: 0, background: "#E1F5EE", borderColor: "#9FE1CB" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px", fontSize: 13 }}>
@@ -562,6 +765,47 @@ function ScreeningForm({ students, schools, onSave, onClose }) {
                 <input className="form-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
               </div>
             </div>
+
+            {showAddStudent && (
+              <div className="card" style={{ marginTop: 12, border: "1.5px solid #1D9E75" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <span style={{ fontSize: 14, fontWeight: 500 }}>Add New Student</span>
+                  <button className="modal-close" onClick={() => setShowAddStudent(false)} style={{ fontSize: 18 }}>×</button>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">School</label>
+                  <select className="form-select" value={newStudentForm.schoolId} onChange={(e) => setNewStudentForm((f) => ({ ...f, schoolId: e.target.value }))}>
+                    <option value="">— Select school —</option>
+                    {schools.map((sc) => <option key={sc.id} value={sc.id}>{sc.name}</option>)}
+                  </select>
+                </div>
+                <div className="grid2">
+                  {[
+                    { key: "name", label: "Student Name" },
+                    { key: "parent", label: "Parent Name" },
+                    { key: "class", label: "Class" },
+                    { key: "section", label: "Section" },
+                    { key: "dob", label: "Date of Birth", type: "date" },
+                    { key: "mobile", label: "Mobile Number" },
+                  ].map(({ key, label, type }) => (
+                    <div className="form-group" key={key}>
+                      <label className="form-label">{label}</label>
+                      <input className="form-input" type={type || "text"} value={newStudentForm[key]} onChange={(e) => setNewStudentForm((f) => ({ ...f, [key]: e.target.value }))} />
+                    </div>
+                  ))}
+                  <div className="form-group">
+                    <label className="form-label">Gender</label>
+                    <select className="form-select" value={newStudentForm.gender} onChange={(e) => setNewStudentForm((f) => ({ ...f, gender: e.target.value }))}>
+                      <option>Male</option><option>Female</option><option>Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 10, marginTop: 8, justifyContent: "flex-end" }}>
+                  <button className="btn" onClick={() => setShowAddStudent(false)}>Cancel</button>
+                  <button className="btn btn-primary" onClick={handleAddStudent} disabled={!newStudentForm.name || !newStudentForm.schoolId}>Save Student</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -844,7 +1088,7 @@ function Dashboard({ schools, students, screenings }) {
   );
 }
 
-function SchoolsPage({ schools, setSchools }) {
+function SchoolsPage({ schools, onAddSchool, onDeleteSchool }) {
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ name: "", district: "", block: "", principal: "", contact: "" });
@@ -855,10 +1099,9 @@ function SchoolsPage({ schools, setSchools }) {
       s.district.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!form.name) return;
-    const id = `SCH${String(schools.length + 1).padStart(3, "0")}`;
-    setSchools((prev) => [...prev, { id, ...form }]);
+    await onAddSchool(form);
     setForm({ name: "", district: "", block: "", principal: "", contact: "" });
     setShowAdd(false);
   };
@@ -893,7 +1136,7 @@ function SchoolsPage({ schools, setSchools }) {
                   <td>{s.principal}</td>
                   <td>{s.contact}</td>
                   <td>
-                    <button className="btn btn-sm" onClick={() => setSchools((prev) => prev.filter((sc) => sc.id !== s.id))}>🗑</button>
+                    <button className="btn btn-sm" onClick={() => onDeleteSchool(s.id)}>🗑</button>
                   </td>
                 </tr>
               ))}
@@ -937,7 +1180,7 @@ function SchoolsPage({ schools, setSchools }) {
   );
 }
 
-function StudentsPage({ students, setStudents, schools }) {
+function StudentsPage({ students, schools, onAddStudent, onDeleteStudent }) {
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [form, setForm] = useState({ schoolId: "", name: "", class: "", section: "", gender: "Male", dob: "", parent: "", mobile: "" });
@@ -948,10 +1191,9 @@ function StudentsPage({ students, setStudents, schools }) {
       s.id.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!form.name || !form.schoolId) return;
-    const id = `STU${String(students.length + 1).padStart(3, "0")}`;
-    setStudents((prev) => [...prev, { id, ...form }]);
+    await onAddStudent(form);
     setForm({ schoolId: "", name: "", class: "", section: "", gender: "Male", dob: "", parent: "", mobile: "" });
     setShowAdd(false);
   };
@@ -989,7 +1231,7 @@ function StudentsPage({ students, setStudents, schools }) {
                     <td>{s.parent}</td>
                     <td>{s.mobile}</td>
                     <td>
-                      <button className="btn btn-sm" onClick={() => setStudents((prev) => prev.filter((st) => st.id !== s.id))}>🗑</button>
+                      <button className="btn btn-sm" onClick={() => onDeleteStudent(s.id)}>🗑</button>
                     </td>
                   </tr>
                 );
@@ -1182,20 +1424,104 @@ function ReportsPage({ screenings, students, schools }) {
   );
 }
 
+function LoginPage({ onLogin }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const [uHash, pHash] = await Promise.all([sha256(username.trim().toLowerCase()), sha256(password)]);
+    if (uHash === AUTH_HASH_U && pHash === AUTH_HASH_P) {
+      localStorage.setItem(AUTH_KEY, btoa(Date.now().toString()));
+      onLogin();
+    } else {
+      setError("Invalid username or password");
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="login-page">
+      <div className="login-card">
+        <div className="login-logo">
+          <div className="login-logo-text">
+            L<span style={{ color: "#1D9E75" }}>|</span>A E<span style={{ color: "#1D9E75" }}>|</span>L
+          </div>
+          <div className="login-logo-sub">LA EL Dental Care</div>
+          <div className="login-logo-addr">Lakshmipuram Ext., West Tambaram</div>
+        </div>
+        <form onSubmit={handleSubmit}>
+          {error && <div className="login-error">{error}</div>}
+          <div className="form-group">
+            <label className="form-label">Username</label>
+            <input className="form-input" type="text" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Enter username" autoComplete="username" autoFocus />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <input className="form-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter password" autoComplete="current-password" />
+          </div>
+          <button className="login-btn" type="submit" disabled={loading || !username || !password}>
+            {loading ? "Signing in…" : "Sign In"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const [authed, setAuthed] = useState(() => !!localStorage.getItem(AUTH_KEY));
   const [page, setPage] = useState("dashboard");
-  const [schools, setSchools] = useState(() => loadData("dental_schools", initialSchools));
-  const [students, setStudents] = useState(() => loadData("dental_students", initialStudents));
-  const [screenings, setScreenings] = useState(() => loadData("dental_screenings", initialScreenings));
+  const [schools, setSchools] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [screenings, setScreenings] = useState([]);
   const [showScreeningForm, setShowScreeningForm] = useState(false);
   const [reportScreening, setReportScreening] = useState(null);
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
 
-  useEffect(() => { saveData("dental_schools", schools); }, [schools]);
-  useEffect(() => { saveData("dental_students", students); }, [students]);
-  useEffect(() => { saveData("dental_screenings", screenings); }, [screenings]);
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem(AUTH_KEY);
+    setAuthed(false);
+  }, []);
 
-  const handleSaveScreening = (screening) => {
-    setScreenings((prev) => [screening, ...prev]);
+  useEffect(() => {
+    if (!authed) return;
+    setDataLoading(true);
+    Promise.all([api.getSchools(), api.getStudents(), api.getScreenings()])
+      .then(([sc, st, scr]) => { setSchools(sc); setStudents(st); setScreenings(scr); })
+      .finally(() => setDataLoading(false));
+  }, [authed]);
+
+  const handleAddSchool = async (data) => {
+    const school = await api.addSchool(data);
+    setSchools((prev) => [...prev, school]);
+    return school;
+  };
+
+  const handleDeleteSchool = async (id) => {
+    await api.deleteSchool(id);
+    setSchools((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleAddStudent = async (data) => {
+    const student = await api.addStudent(data);
+    setStudents((prev) => [...prev, student]);
+    return student;
+  };
+
+  const handleDeleteStudent = async (id) => {
+    await api.deleteStudent(id);
+    setStudents((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleSaveScreening = async (screening) => {
+    const saved = await api.addScreening(screening);
+    setScreenings((prev) => [saved, ...prev]);
     setPage("screenings");
   };
 
@@ -1205,6 +1531,31 @@ export default function App() {
 
   const reportStudent = reportScreening ? students.find((s) => s.id === reportScreening.studentId) : null;
   const reportSchool = reportStudent ? schools.find((s) => s.id === reportStudent.schoolId) : null;
+
+  if (!authed) {
+    return (
+      <>
+        <style>{css}</style>
+        <LoginPage onLogin={() => setAuthed(true)} />
+      </>
+    );
+  }
+
+  if (dataLoading) {
+    return (
+      <>
+        <style>{css}</style>
+        <div className="login-page">
+          <div style={{ textAlign: "center", color: "#085041" }}>
+            <div style={{ fontSize: 28, fontWeight: 700, fontFamily: "serif", letterSpacing: 2, marginBottom: 12 }}>
+              L<span style={{ color: "#1D9E75" }}>|</span>A E<span style={{ color: "#1D9E75" }}>|</span>L
+            </div>
+            <div style={{ fontSize: 14 }}>Loading...</div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   const pageLabels = {
     dashboard: "Dashboard",
@@ -1219,7 +1570,8 @@ export default function App() {
     <>
       <style>{css}</style>
       <div className="app">
-        <div className="sidebar">
+        <div className={`menu-overlay${mobileMenu ? " open" : ""}`} onClick={() => setMobileMenu(false)} />
+        <div className={`sidebar${mobileMenu ? " mobile-open" : ""}`}>
           <div className="sidebar-header">
             <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "serif", letterSpacing: 1 }}>L<span style={{ color: "#1D9E75" }}>|</span>A E<span style={{ color: "#1D9E75" }}>|</span>L</div>
             <div className="sidebar-logo">LA EL Dental Care</div>
@@ -1233,6 +1585,7 @@ export default function App() {
                 onClick={() => {
                   if (key === "screening") { setShowScreeningForm(true); }
                   else setPage(key);
+                  setMobileMenu(false);
                 }}
               >
                 <span>{icon}</span>
@@ -1242,11 +1595,21 @@ export default function App() {
           </nav>
           <div style={{ padding: "1rem", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
             <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Dr. Priyanka Paul</div>
-            <div className="badge-role" style={{ marginTop: 4, display: "inline-block" }}>Dentist</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+              <span className="badge-role">Dentist</span>
+              <button className="btn btn-sm" onClick={handleLogout} style={{ fontSize: 11, padding: "3px 10px" }}>Logout</button>
+            </div>
           </div>
         </div>
 
         <div className="main">
+          <div className="mobile-header">
+            <button className="hamburger" onClick={() => setMobileMenu(true)}>☰</button>
+            <span className="mobile-header-title">{pageLabels[page]}</span>
+            <span className="mobile-header-date">
+              {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+            </span>
+          </div>
           <div className="topbar">
             <div className="topbar-title">{pageLabels[page]}</div>
             <div className="topbar-right">
@@ -1261,8 +1624,8 @@ export default function App() {
 
           <div className="content">
             {page === "dashboard" && <Dashboard schools={schools} students={students} screenings={screenings} />}
-            {page === "schools" && <SchoolsPage schools={schools} setSchools={setSchools} />}
-            {page === "students" && <StudentsPage students={students} setStudents={setStudents} schools={schools} />}
+            {page === "schools" && <SchoolsPage schools={schools} onAddSchool={handleAddSchool} onDeleteSchool={handleDeleteSchool} />}
+            {page === "students" && <StudentsPage students={students} schools={schools} onAddStudent={handleAddStudent} onDeleteStudent={handleDeleteStudent} />}
             {page === "screenings" && (
               <ScreeningsPage
                 screenings={screenings}
@@ -1276,12 +1639,15 @@ export default function App() {
         </div>
       </div>
 
+      <button className="fab" onClick={() => setShowScreeningForm(true)} title="New Screening">🦷</button>
+
       {showScreeningForm && (
         <ScreeningForm
           students={students}
           schools={schools}
           onSave={handleSaveScreening}
           onClose={() => setShowScreeningForm(false)}
+          onAddStudent={handleAddStudent}
         />
       )}
 
