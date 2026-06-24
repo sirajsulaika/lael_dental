@@ -287,6 +287,23 @@ app.delete("/api/screenings/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+// --- DB STATUS ---
+app.get("/api/db-status", async (req, res) => {
+  try {
+    const [[row]] = await pool.query("SELECT 1 AS ok");
+    res.json({
+      connected: !!row,
+      env: process.env.NODE_ENV || "development",
+      host: DB_HOST,
+      port: DB_PORT,
+      database: DB_NAME,
+      user: DB_USER,
+    });
+  } catch (err) {
+    res.json({ connected: false, error: err.message, env: process.env.NODE_ENV || "development" });
+  }
+});
+
 // --- START ---
 const PORT = SERVER_PORT || 5000;
 initDB()

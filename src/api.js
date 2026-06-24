@@ -21,4 +21,6 @@ export const api = {
   getScreenings: () => req("/screenings"),
   addScreening: (data) => req("/screenings", { method: "POST", body: JSON.stringify(data) }),
   deleteScreening: (id) => req(`/screenings/${id}`, { method: "DELETE" }),
+
+  getDbStatus: () => req("/db-status"),
 };

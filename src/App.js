@@ -1483,6 +1483,7 @@ export default function App() {
   const [reportScreening, setReportScreening] = useState(null);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
+  const [dbStatus, setDbStatus] = useState(null);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem(AUTH_KEY);
@@ -1492,8 +1493,8 @@ export default function App() {
   useEffect(() => {
     if (!authed) return;
     setDataLoading(true);
-    Promise.all([api.getSchools(), api.getStudents(), api.getScreenings()])
-      .then(([sc, st, scr]) => { setSchools(sc); setStudents(st); setScreenings(scr); })
+    Promise.all([api.getSchools(), api.getStudents(), api.getScreenings(), api.getDbStatus()])
+      .then(([sc, st, scr, db]) => { setSchools(sc); setStudents(st); setScreenings(scr); setDbStatus(db); })
       .finally(() => setDataLoading(false));
   }, [authed]);
 
@@ -1599,6 +1600,17 @@ export default function App() {
               <span className="badge-role">Dentist</span>
               <button className="btn btn-sm" onClick={handleLogout} style={{ fontSize: 11, padding: "3px 10px" }}>Logout</button>
             </div>
+            {dbStatus && (
+              <div style={{ marginTop: 10, padding: "6px 8px", background: dbStatus.connected ? "#EAF3DE" : "#FCEBEB", borderRadius: 6, fontSize: 10, lineHeight: 1.6, border: `0.5px solid ${dbStatus.connected ? "#639922" : "#E24B4A"}` }}>
+                <div style={{ fontWeight: 600, color: dbStatus.connected ? "#27500A" : "#791F1F" }}>
+                  {dbStatus.connected ? "● DB Connected" : "● DB Disconnected"}
+                </div>
+                <div style={{ color: "#5F5E5A" }}>
+                  {dbStatus.env === "production" ? "PROD" : "LOCAL"} — {dbStatus.host}:{dbStatus.port}
+                </div>
+                <div style={{ color: "#888780" }}>{dbStatus.database} ({dbStatus.user})</div>
+              </div>
+            )}
           </div>
         </div>
 
