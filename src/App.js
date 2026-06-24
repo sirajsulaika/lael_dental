@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import initialSchools from "./data/schools.json";
 import initialStudents from "./data/students.json";
 import initialScreenings from "./data/screenings.json";
@@ -18,16 +18,16 @@ const saveData = (key, data) => {
   } catch { }
 };
 
-const COLORS = {
-  teal: { bg: "#E1F5EE", border: "#1D9E75", text: "#085041", accent: "#1D9E75" },
-  blue: { bg: "#E6F1FB", border: "#378ADD", text: "#0C447C", accent: "#185FA5" },
-  green: { bg: "#EAF3DE", border: "#639922", text: "#27500A", accent: "#3B6D11" },
-  amber: { bg: "#FAEEDA", border: "#BA7517", text: "#633806", accent: "#854F0B" },
-  red: { bg: "#FCEBEB", border: "#E24B4A", text: "#791F1F", accent: "#A32D2D" },
-  purple: { bg: "#EEEDFE", border: "#7F77DD", text: "#3C3489", accent: "#534AB7" },
-  coral: { bg: "#FAECE7", border: "#D85A30", text: "#712B13", accent: "#993C1D" },
-  gray: { bg: "#F1EFE8", border: "#888780", text: "#444441", accent: "#5F5E5A" },
-};
+// const COLORS = {
+//   teal: { bg: "#E1F5EE", border: "#1D9E75", text: "#085041", accent: "#1D9E75" },
+//   blue: { bg: "#E6F1FB", border: "#378ADD", text: "#0C447C", accent: "#185FA5" },
+//   green: { bg: "#EAF3DE", border: "#639922", text: "#27500A", accent: "#3B6D11" },
+//   amber: { bg: "#FAEEDA", border: "#BA7517", text: "#633806", accent: "#854F0B" },
+//   red: { bg: "#FCEBEB", border: "#E24B4A", text: "#791F1F", accent: "#A32D2D" },
+//   purple: { bg: "#EEEDFE", border: "#7F77DD", text: "#3C3489", accent: "#534AB7" },
+//   coral: { bg: "#FAECE7", border: "#D85A30", text: "#712B13", accent: "#993C1D" },
+//   gray: { bg: "#F1EFE8", border: "#888780", text: "#444441", accent: "#5F5E5A" },
+// };
 
 const HEALTH_BADGE = (score) => {
   if (score >= 95) return { label: "Excellent", color: "#27500A", bg: "#EAF3DE", border: "#639922" };
