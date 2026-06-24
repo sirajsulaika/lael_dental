@@ -966,7 +966,7 @@ function Dashboard({ schools, students, screenings }) {
   return (
     <div>
       <div className="page-head">
-        <div className="page-title">Dashboard</div>
+        <div className="page-title">Dashboard1 </div>
         <div className="page-sub">LA EL Dental Care — Screening Overview</div>
       </div>
 
@@ -1496,7 +1496,7 @@ export default function App() {
     Promise.all([api.getSchools(), api.getStudents(), api.getScreenings()])
       .then(([sc, st, scr]) => { setSchools(sc); setStudents(st); setScreenings(scr); })
       .finally(() => setDataLoading(false));
-    api.getDbStatus().then(setDbStatus).catch(() => {});
+    api.getDbStatus().then(setDbStatus).catch(() => { });
   }, [authed]);
 
   const handleAddSchool = async (data) => {
