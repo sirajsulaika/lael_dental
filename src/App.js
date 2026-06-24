@@ -15,7 +15,7 @@ const loadData = (key, fallback) => {
 const saveData = (key, data) => {
   try {
     localStorage.setItem(key, JSON.stringify(data));
-  } catch {}
+  } catch { }
 };
 
 const COLORS = {
