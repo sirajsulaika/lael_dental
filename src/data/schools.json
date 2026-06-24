@@ -1,0 +1,5 @@
+[
+  { "id": "SCH001", "name": "Panchayat Union Middle School", "district": "Chennai", "block": "Ambattur", "principal": "K. Rajesh", "contact": "9841234567" },
+  { "id": "SCH002", "name": "Government High School Tambaram", "district": "Chennai", "block": "Tambaram", "principal": "S. Meenakshi", "contact": "9876543210" },
+  { "id": "SCH003", "name": "Adi Dravidar Welfare School", "district": "Coimbatore", "block": "Singanallur", "principal": "P. Arumugam", "contact": "9994567890" }
+]

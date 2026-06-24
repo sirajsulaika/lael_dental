@@ -1,0 +1,6 @@
+[
+  { "id": "STU001", "schoolId": "SCH001", "name": "Karthik R", "class": "6", "section": "A", "gender": "Male", "dob": "2013-05-12", "parent": "Ramesh K", "mobile": "9841234567" },
+  { "id": "STU002", "schoolId": "SCH001", "name": "Priya S", "class": "7", "section": "B", "gender": "Female", "dob": "2012-08-20", "parent": "Suresh S", "mobile": "9876543210" },
+  { "id": "STU003", "schoolId": "SCH002", "name": "Arun M", "class": "8", "section": "A", "gender": "Male", "dob": "2011-02-15", "parent": "Murugan A", "mobile": "9994561234" },
+  { "id": "STU004", "schoolId": "SCH003", "name": "Deepa V", "class": "6", "section": "C", "gender": "Female", "dob": "2013-11-30", "parent": "Vijay V", "mobile": "9962345678" }
+]
