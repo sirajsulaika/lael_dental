@@ -29,15 +29,6 @@ async function nextId(prefix, table) {
 }
 
 async function initDB() {
-  const conn = await mysql.createConnection({
-    host: DB_HOST,
-    port: Number(DB_PORT),
-    user: DB_USER,
-    password: DB_PASSWORD || "",
-  });
-  await conn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\``);
-  await conn.end();
-
   pool = mysql.createPool({
     host: DB_HOST,
     port: Number(DB_PORT),
@@ -47,6 +38,9 @@ async function initDB() {
     waitForConnections: true,
     connectionLimit: 10,
   });
+
+  // Test connection
+  await pool.query("SELECT 1");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS schools (
@@ -314,7 +308,7 @@ if (fs.existsSync(buildPath)) {
 }
 
 // --- START ---
-const PORT = SERVER_PORT || 5000;
+const PORT = process.env.PORT || SERVER_PORT || 5000;
 initDB()
   .then(() => {
     app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT} [${process.env.NODE_ENV || "development"}]`));
