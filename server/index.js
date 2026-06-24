@@ -1,6 +1,6 @@
-require("dotenv").config({
-  path: require("path").join(__dirname, process.env.NODE_ENV === "production" ? ".env.production" : ".env"),
-});
+if (process.env.NODE_ENV !== "production") {
+  require("dotenv").config({ path: require("path").join(__dirname, ".env") });
+}
 
 const express = require("express");
 const mysql = require("mysql2/promise");
