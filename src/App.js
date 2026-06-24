@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 import { api } from "./api";
 
 const AUTH_HASH_U = "6029fa709e2c88329604ca75c8aa5eaafd4219dfb69fb3a35d0575ceddfc15ee";
@@ -27,6 +29,17 @@ const HEALTH_BADGE = (score) => {
   if (score >= 65) return { label: "Needs Attention", color: "#633806", bg: "#FAEEDA", border: "#BA7517" };
   return { label: "Urgent Care", color: "#791F1F", bg: "#FCEBEB", border: "#E24B4A" };
 };
+
+const TN_DISTRICTS = [
+  "Ariyalur", "Chengalpattu", "Chennai", "Coimbatore", "Cuddalore",
+  "Dharmapuri", "Dindigul", "Erode", "Kallakurichi", "Kancheepuram",
+  "Kanyakumari", "Karur", "Krishnagiri", "Madurai", "Mayiladuthurai",
+  "Nagapattinam", "Namakkal", "Nilgiris", "Perambalur", "Pudukkottai",
+  "Ramanathapuram", "Ranipet", "Salem", "Sivagangai", "Tenkasi",
+  "Thanjavur", "Theni", "Thoothukudi", "Tiruchirappalli", "Tirunelveli",
+  "Tirupathur", "Tiruppur", "Tiruvallur", "Tiruvannamalai", "Tiruvarur",
+  "Vellore", "Viluppuram", "Virudhunagar",
+];
 
 const TREATMENTS_LIST = [
   "Dental Scaling / Cleaning & Polishing",
@@ -112,6 +125,24 @@ const css = `
   .btn-primary { background: #1D9E75; color: #fff; border-color: #1D9E75; }
   .btn-primary:hover { background: #0F6E56; }
   .btn-danger { background: #E24B4A; color: #fff; border-color: #E24B4A; }
+  .btn-icon { padding: 4px 8px; font-size: 14px; border: none; background: none; cursor: pointer; border-radius: 6px; color: var(--color-text-secondary); transition: background 0.1s, color 0.1s; }
+  .btn-icon:hover { background: var(--color-background-secondary, rgba(0,0,0,0.06)); color: var(--color-text-primary); }
+  .btn-icon.danger:hover { background: #FCEBEB; color: #A32D2D; }
+  .action-cell { display: flex; gap: 2px; }
+  .search-select { position: relative; }
+  .search-select-input { width: 100%; padding: 8px 10px; border: 0.5px solid var(--color-border-secondary, rgba(0,0,0,0.25)); border-radius: 8px; font-size: 13px; background: var(--color-background-primary); color: var(--color-text-primary); cursor: pointer; }
+  .search-select-input:focus { outline: none; border-color: #1D9E75; box-shadow: 0 0 0 2px rgba(29,158,117,0.15); }
+  .search-select-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 0.5px solid var(--color-border-secondary); border-radius: 8px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 50; box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+  .search-select-option { padding: 8px 12px; font-size: 13px; cursor: pointer; transition: background 0.1s; }
+  .search-select-option:hover { background: #E1F5EE; }
+  .search-select-option.active { background: #E1F5EE; color: #085041; font-weight: 500; }
+  .search-select-empty { padding: 12px; font-size: 12px; color: var(--color-text-secondary); text-align: center; }
+  .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 300; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+  .confirm-box { background: #fff; border-radius: 14px; padding: 1.5rem; width: 100%; max-width: 340px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+  .confirm-icon { font-size: 36px; margin-bottom: 10px; }
+  .confirm-title { font-size: 16px; font-weight: 600; color: var(--color-text-primary); margin-bottom: 6px; }
+  .confirm-msg { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 20px; }
+  .confirm-actions { display: flex; gap: 10px; justify-content: center; }
   .btn-sm { padding: 5px 12px; font-size: 12px; }
   .table-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -150,6 +181,23 @@ const css = `
   .camera-capture:hover { background: rgba(255,255,255,0.4); }
   .camera-capture:active { background: rgba(255,255,255,0.6); transform: scale(0.93); }
   .camera-switch { background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; padding: 8px; }
+  .lightbox { position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.92); display: flex; flex-direction: column; }
+  .lightbox-top { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; color: #fff; }
+  .lightbox-title { font-size: 14px; font-weight: 500; }
+  .lightbox-counter { font-size: 12px; color: rgba(255,255,255,0.6); }
+  .lightbox-close { background: none; border: none; color: #fff; font-size: 28px; cursor: pointer; padding: 0 4px; }
+  .lightbox-body { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; padding: 16px; }
+  .lightbox-body img { max-width: 90%; max-height: 90%; object-fit: contain; border-radius: 8px; transition: transform 0.3s; }
+  .lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(255,255,255,0.15); border: none; color: #fff; font-size: 28px; width: 44px; height: 44px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
+  .lightbox-nav:hover { background: rgba(255,255,255,0.3); }
+  .lightbox-nav.prev { left: 16px; }
+  .lightbox-nav.next { right: 16px; }
+  .lightbox-bottom { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 16px; }
+  .lightbox-btn { background: rgba(255,255,255,0.15); border: none; color: #fff; font-size: 18px; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s; }
+  .lightbox-btn:hover { background: rgba(255,255,255,0.3); }
+  .lightbox-dots { display: flex; gap: 6px; }
+  .lightbox-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.3); border: none; cursor: pointer; padding: 0; transition: background 0.15s; }
+  .lightbox-dot.active { background: #fff; }
   .pdf-preview { background: #fff; border: 0.5px solid var(--color-border-tertiary); border-radius: 12px; padding: 24px; max-width: 680px; margin: 0 auto; }
   .pdf-header { text-align: center; border-bottom: 2px solid #1D9E75; padding-bottom: 12px; margin-bottom: 16px; }
   .pdf-logo-row { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 6px; }
@@ -232,7 +280,7 @@ const css = `
     .mobile-header-title { font-size: 15px; font-weight: 500; color: var(--color-text-primary); flex: 1; }
     .mobile-header-date { font-size: 11px; color: var(--color-text-secondary); }
     .topbar { display: none; }
-    .content { padding: 1rem; }
+    .content { padding: 0.75rem; }
     .grid2 { grid-template-columns: 1fr; }
     .photo-grid { grid-template-columns: repeat(3, 1fr); }
     .pdf-finding-grid { grid-template-columns: 1fr 1fr; }
@@ -240,9 +288,36 @@ const css = `
     .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .kpi-value { font-size: 18px; }
     .page-title { font-size: 16px; }
+    .page-head { flex-direction: column !important; gap: 8px; }
     .camp-card { grid-template-columns: 1fr; }
     .camp-left, .camp-middle, .camp-right { border-right: none; border-bottom: 1px solid #ccc; }
     .camp-right { border-bottom: none; }
+    .search-bar { flex-direction: column; gap: 8px; }
+    .search-bar > * { width: 100% !important; min-width: 0 !important; }
+    .search-input { width: 100%; }
+    .card { padding: 0.75rem; border-radius: 8px; }
+    .card-title { font-size: 13px; }
+    table { font-size: 12px; }
+    th, td { padding: 6px 8px; }
+    th { font-size: 10px; }
+    .action-cell { gap: 0; }
+    .btn-icon { padding: 4px 5px; font-size: 13px; }
+    .modal-overlay { padding: 0.5rem; }
+    .modal { padding: 1rem; max-height: 95vh; border-radius: 12px; }
+    .modal-title { font-size: 14px; }
+    .confirm-box { padding: 1.25rem; }
+    .confirm-icon { font-size: 28px; }
+    .confirm-title { font-size: 14px; }
+    .fab { bottom: 16px; right: 16px; width: 48px; height: 48px; font-size: 24px; }
+    .lightbox-nav { width: 36px; height: 36px; font-size: 22px; }
+    .lightbox-nav.prev { left: 8px; }
+    .lightbox-nav.next { right: 8px; }
+    .login-card { padding: 1.5rem; }
+    .login-btn { padding: 10px; font-size: 14px; }
+    .search-select-dropdown { max-height: 160px; }
+    .finding-row { grid-template-columns: 1fr; gap: 4px; }
+    .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .tab { white-space: nowrap; padding: 8px 12px; font-size: 12px; }
   }
   @keyframes slideIn { from { transform: translateX(-100%); } to { transform: translateX(0); } }
   .fab { position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px; border-radius: 50%; background: #1D9E75; color: #fff; border: none; font-size: 28px; cursor: pointer; box-shadow: 0 4px 14px rgba(29,158,117,0.4); display: flex; align-items: center; justify-content: center; z-index: 90; transition: background 0.15s, transform 0.15s; }
@@ -482,140 +557,6 @@ function PhotoCapture({ photos, setPhotos }) {
   );
 }
 
-function PDFReportCard({ screening, student, school, onClose }) {
-  if (!screening || !student || !school) return null;
-  const makeToothRow = (qL, qR) => {
-    const t = [];
-    for (let i = 8; i >= 1; i--) t.push(`${qL}${i}`);
-    for (let i = 1; i <= 8; i++) t.push(`${qR}${i}`);
-    return t;
-  };
-  const upperTeeth = makeToothRow(1, 2);
-  const lowerTeeth = makeToothRow(4, 3);
-  const cavityTeeth = screening.cavityTeeth || [];
-  const age = student.dob ? new Date().getFullYear() - new Date(student.dob).getFullYear() : "—";
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth: 920 }} onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <span className="modal-title">Camp Card Preview</span>
-          <button className="modal-close" onClick={onClose}>×</button>
-        </div>
-
-        <div className="camp-card">
-          {/* Left Column — Clinic & Patient */}
-          <div className="camp-left">
-            <div style={{ textAlign: "center", marginBottom: 16 }}>
-              <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.1, fontFamily: "serif" }}>
-                L<span style={{ color: "#1D9E75" }}>|</span>A
-              </div>
-              <div style={{ fontSize: 9, letterSpacing: 4, fontWeight: 500, margin: "2px 0" }}>DENTAL CARE</div>
-              <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.1, fontFamily: "serif" }}>
-                E<span style={{ color: "#1D9E75" }}>|</span>L
-              </div>
-            </div>
-            <div style={{ textAlign: "center", fontSize: 13, fontWeight: 600 }}>Ph : 93639 12131</div>
-            <div style={{ textAlign: "center", fontSize: 10, color: "#666", marginTop: 2 }}>Lakshmipuram Ext., West Tambaram</div>
-            <div style={{ textAlign: "center", fontSize: 14, fontWeight: 600, marginTop: 8 }}>Dr. Priyanka Paul</div>
-            <div style={{ textAlign: "center", marginTop: 8 }}>
-              <span style={{ display: "inline-block", background: "#f0f0f0", padding: "4px 20px", fontSize: 15, fontWeight: 700, border: "1.5px solid #999" }}>CAMP CARD</span>
-            </div>
-            <div style={{ marginTop: 18, fontSize: 12, lineHeight: 2.2 }}>
-              <div><strong>Name :</strong> {student.name}</div>
-              <div style={{ display: "flex", gap: 16 }}>
-                <span><strong>Age :</strong> {age}</span>
-                <span><strong>Gender :</strong> {student.gender}</span>
-              </div>
-              <div><strong>School :</strong> {school.name}</div>
-              <div><strong>Class :</strong> {student.class} – {student.section}</div>
-              <div><strong>Ph No :</strong> {student.mobile}</div>
-            </div>
-            <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 8 }}>
-              <div className="pdf-qr">QR Code</div>
-              <span style={{ fontSize: 10, color: "#888", fontWeight: 500 }}>SCAN FOR LOCATION</span>
-            </div>
-          </div>
-
-          {/* Middle Column — Clinical Findings */}
-          <div className="camp-middle">
-            <div className="camp-field" style={{ marginBottom: 10, borderBottom: "none" }}>
-              <span className="camp-field-label" style={{ fontSize: 13 }}>Chief Complaint :</span>
-              <div style={{ marginTop: 4, minHeight: 18 }}>{screening.chiefComplaint || "—"}</div>
-            </div>
-
-            <div style={{ marginBottom: 14 }}>
-              <div className="camp-field-label" style={{ marginBottom: 6 }}>Cavity:</div>
-              <div className="camp-tooth-chart">
-                {[upperTeeth, lowerTeeth].map((row, ri) => (
-                  <div key={ri} className="camp-tooth-row">
-                    {row.map((id, i) => (
-                      <span key={id} className={`camp-tooth${cavityTeeth.includes(id) ? " affected" : ""}`} style={i === 7 ? { marginRight: 8 } : {}}>
-                        {id.slice(1)}
-                      </span>
-                    ))}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="camp-field-list">
-              {[
-                { l: "Oral Hygiene :", v: screening.oralHygiene },
-                { l: "Bleeding Gums :", v: screening.bleedingGums },
-                { l: "Crowding / Proclination / Spacing :", v: screening.crowding },
-                { l: "Missing teeth :", v: screening.missingTeeth },
-                { l: "Pockets :", v: screening.pockets },
-                { l: "Impaction :", v: screening.impaction },
-                { l: "Soft tissue :", v: screening.softTissue },
-                { l: "Cervical abrasions :", v: screening.cervicalAbrasions },
-                { l: "Stains :", v: screening.stains },
-                { l: "Calculus :", v: screening.calculus },
-                { l: "Others :", v: screening.others },
-              ].map(({ l, v }) => (
-                <div key={l} className="camp-field">
-                  <span className="camp-field-label">{l}</span> {v || "—"}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Right Column — Treatments Advised */}
-          <div className="camp-right">
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Treatments Advised</div>
-            <div className="camp-treatments">
-              {TREATMENTS_LIST.map((t) => (
-                <div key={t} className="camp-treatment-row">
-                  <span style={{ fontSize: 12 }}>{t}</span>
-                  <span className={`camp-checkbox${(screening.treatmentsAdvised || []).includes(t) ? " checked" : ""}`}>
-                    {(screening.treatmentsAdvised || []).includes(t) ? "✓" : ""}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div style={{ borderTop: "1px solid #ccc", marginTop: 16, paddingTop: 12, display: "flex", justifyContent: "space-between", alignItems: "flex-end", fontSize: 11, color: "#888" }}>
-          <div>
-            <div style={{ fontWeight: 500, color: "#333" }}>{screening.dentist}</div>
-            <div>Date: {screening.date}</div>
-            <div>ID: {screening.id}</div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ marginBottom: 4 }}>Score: {screening.score}/100</div>
-            <HealthPill score={screening.score} />
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 10, marginTop: 16, justifyContent: "flex-end" }}>
-          <button className="btn" onClick={onClose}>Close</button>
-          <button className="btn btn-primary" onClick={() => window.print()}>🖨 Print / Download PDF</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ScreeningForm({ students, schools, onSave, onClose, onAddStudent }) {
   const [step, setStep] = useState(1);
   const [schoolFilter, setSchoolFilter] = useState("");
@@ -640,7 +581,7 @@ function ScreeningForm({ students, schools, onSave, onClose, onAddStudent }) {
     priority: "Routine",
   });
   const [photos, setPhotos] = useState({});
-  const [dentist, setDentist] = useState("Dr. Priyanka Paul");
+  const [dentist, setDentist] = useState("Dr. Priyanka Paul, MDS, BDS");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const score = calcScore(findings);
   const sid = useRef(genScreeningId());
@@ -966,8 +907,8 @@ function Dashboard({ schools, students, screenings }) {
   return (
     <div>
       <div className="page-head">
-        <div className="page-title">Dashboard1 </div>
-        <div className="page-sub">LA EL Dental Care — Screening Overview</div>
+        <div className="page-title">Dashboard </div>
+        <div className="page-sub">LA'EL DENTAL CARE — Screening Overview</div>
       </div>
 
       <div className="kpi-grid">
@@ -1088,10 +1029,110 @@ function Dashboard({ schools, students, screenings }) {
   );
 }
 
-function SchoolsPage({ schools, onAddSchool, onDeleteSchool }) {
+function SearchSelect({ options, value, onChange, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const ref = useRef(null);
+  const selected = options.find((o) => o.value === value);
+
+  useEffect(() => {
+    const handleClick = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const filtered = options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()));
+
+  return (
+    <div className="search-select" ref={ref}>
+      <input
+        className="search-select-input"
+        placeholder={placeholder || "Select..."}
+        value={open ? query : (selected?.label || "")}
+        onFocus={() => { setOpen(true); setQuery(""); }}
+        onChange={(e) => setQuery(e.target.value)}
+      />
+      {open && (
+        <div className="search-select-dropdown">
+          <div className="search-select-option" style={{ color: "var(--color-text-secondary)" }} onClick={() => { onChange(""); setOpen(false); setQuery(""); }}>
+            — All —
+          </div>
+          {filtered.map((o) => (
+            <div key={o.value} className={`search-select-option${o.value === value ? " active" : ""}`} onClick={() => { onChange(o.value); setOpen(false); setQuery(""); }}>
+              {o.label}
+            </div>
+          ))}
+          {filtered.length === 0 && <div className="search-select-empty">No results</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ConfirmDialog({ message, onConfirm, onCancel }) {
+  return (
+    <div className="confirm-overlay" onClick={onCancel}>
+      <div className="confirm-box" onClick={(e) => e.stopPropagation()}>
+        <div className="confirm-icon">⚠️</div>
+        <div className="confirm-title">Are you sure?</div>
+        <div className="confirm-msg">{message}</div>
+        <div className="confirm-actions">
+          <button className="btn" onClick={onCancel}>Cancel</button>
+          <button className="btn btn-danger" onClick={onConfirm}>Yes, Delete</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SchoolFormModal({ title, initial, onSave, onClose }) {
+  const [form, setForm] = useState(initial);
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">{title}</span>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="grid2">
+          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+            <label className="form-label">School Name</label>
+            <input className="form-input" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">District</label>
+            <SearchSelect
+              options={TN_DISTRICTS.map((d) => ({ value: d, label: d }))}
+              value={form.district}
+              onChange={(v) => setForm((f) => ({ ...f, district: v }))}
+              placeholder="Select district…"
+            />
+          </div>
+          {[
+            { key: "block", label: "Address" },
+            { key: "principal", label: "Principal Name" },
+            { key: "contact", label: "Contact Number" },
+          ].map(({ key, label }) => (
+            <div className="form-group" key={key}>
+              <label className="form-label">{label}</label>
+              <input className="form-input" value={form[key]} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 12, justifyContent: "flex-end" }}>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => onSave(form)} disabled={!form.name}>Save</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SchoolsPage({ schools, students, onAddSchool, onDeleteSchool, onEditSchool }) {
   const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ name: "", district: "", block: "", principal: "", contact: "" });
+  const [editItem, setEditItem] = useState(null);
+  const [deleteId, setDeleteId] = useState(null);
 
   const filtered = schools.filter(
     (s) =>
@@ -1099,11 +1140,14 @@ function SchoolsPage({ schools, onAddSchool, onDeleteSchool }) {
       s.district.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleAdd = async () => {
-    if (!form.name) return;
+  const handleAdd = async (form) => {
     await onAddSchool(form);
-    setForm({ name: "", district: "", block: "", principal: "", contact: "" });
     setShowAdd(false);
+  };
+
+  const handleEdit = async (form) => {
+    await onEditSchool(editItem.id, form);
+    setEditItem(null);
   };
 
   return (
@@ -1123,7 +1167,7 @@ function SchoolsPage({ schools, onAddSchool, onDeleteSchool }) {
           <table>
             <thead>
               <tr>
-                <th>ID</th><th>School Name</th><th>District</th><th>Block</th><th>Principal</th><th>Contact</th><th></th>
+                <th>ID</th><th>School Name</th><th>District</th><th>Address</th><th>Principal</th><th>Contact</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1135,9 +1179,13 @@ function SchoolsPage({ schools, onAddSchool, onDeleteSchool }) {
                   <td>{s.block}</td>
                   <td>{s.principal}</td>
                   <td>{s.contact}</td>
+                  {(() => { const hasStudents = students.some((st) => st.schoolId === s.id); return (
                   <td>
-                    <button className="btn btn-sm" onClick={() => onDeleteSchool(s.id)}>🗑</button>
-                  </td>
+                    <div className="action-cell">
+                      <button className="btn-icon" title="Edit" onClick={() => setEditItem(s)}>✏️</button>
+                      <button className="btn-icon danger" title={hasStudents ? "Cannot delete — students exist in this school" : "Delete"} onClick={hasStudents ? undefined : () => setDeleteId(s.id)} style={hasStudents ? { opacity: 0.3, cursor: "not-allowed" } : {}}>🗑️</button>
+                    </div>
+                  </td>);})()}
                 </tr>
               ))}
               {filtered.length === 0 && (
@@ -1149,53 +1197,85 @@ function SchoolsPage({ schools, onAddSchool, onDeleteSchool }) {
       </div>
 
       {showAdd && (
-        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Add School</span>
-              <button className="modal-close" onClick={() => setShowAdd(false)}>×</button>
-            </div>
-            <div className="grid2">
-              {[
-                { key: "name", label: "School Name" },
-                { key: "district", label: "District" },
-                { key: "block", label: "Block" },
-                { key: "principal", label: "Principal Name" },
-                { key: "contact", label: "Contact Number" },
-              ].map(({ key, label }) => (
-                <div className="form-group" key={key} style={key === "name" ? { gridColumn: "1 / -1" } : {}}>
-                  <label className="form-label">{label}</label>
-                  <input className="form-input" value={form[key]} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 12, justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setShowAdd(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleAdd}>Add School</button>
-            </div>
-          </div>
-        </div>
+        <SchoolFormModal title="Add School" initial={{ name: "", district: "", block: "", principal: "", contact: "" }} onSave={handleAdd} onClose={() => setShowAdd(false)} />
+      )}
+      {editItem && (
+        <SchoolFormModal title="Edit School" initial={{ name: editItem.name, district: editItem.district, block: editItem.block, principal: editItem.principal, contact: editItem.contact }} onSave={handleEdit} onClose={() => setEditItem(null)} />
+      )}
+      {deleteId && (
+        <ConfirmDialog message="This school and its students will be removed from the active list." onConfirm={() => { onDeleteSchool(deleteId); setDeleteId(null); }} onCancel={() => setDeleteId(null)} />
       )}
     </div>
   );
 }
 
-function StudentsPage({ students, schools, onAddStudent, onDeleteStudent }) {
-  const [search, setSearch] = useState("");
-  const [showAdd, setShowAdd] = useState(false);
-  const [form, setForm] = useState({ schoolId: "", name: "", class: "", section: "", gender: "Male", dob: "", parent: "", mobile: "" });
-
-  const filtered = students.filter(
-    (s) =>
-      s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.id.toLowerCase().includes(search.toLowerCase())
+function StudentFormModal({ title, initial, schools, onSave, onClose }) {
+  const [form, setForm] = useState(initial);
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">{title}</span>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="grid2">
+          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
+            <label className="form-label">School</label>
+            <select className="form-select" value={form.schoolId} onChange={(e) => setForm((f) => ({ ...f, schoolId: e.target.value }))}>
+              <option value="">— Select school —</option>
+              {schools.map((sc) => <option key={sc.id} value={sc.id}>{sc.name}</option>)}
+            </select>
+          </div>
+          {[
+            { key: "name", label: "Student Name" },
+            { key: "parent", label: "Parent Name" },
+            { key: "class", label: "Class" },
+            { key: "section", label: "Section" },
+            { key: "dob", label: "Date of Birth", type: "date" },
+            { key: "mobile", label: "Mobile Number" },
+          ].map(({ key, label, type }) => (
+            <div className="form-group" key={key}>
+              <label className="form-label">{label}</label>
+              <input className="form-input" type={type || "text"} value={form[key]} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
+            </div>
+          ))}
+          <div className="form-group">
+            <label className="form-label">Gender</label>
+            <select className="form-select" value={form.gender} onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}>
+              <option>Male</option><option>Female</option><option>Other</option>
+            </select>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 10, marginTop: 12, justifyContent: "flex-end" }}>
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => onSave(form)} disabled={!form.name || !form.schoolId}>Save</button>
+        </div>
+      </div>
+    </div>
   );
+}
 
-  const handleAdd = async () => {
-    if (!form.name || !form.schoolId) return;
+function StudentsPage({ students, schools, onAddStudent, onDeleteStudent, onEditStudent }) {
+  const [search, setSearch] = useState("");
+  const [schoolFilter, setSchoolFilter] = useState("");
+  const [showAdd, setShowAdd] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const [deleteId, setDeleteId] = useState(null);
+
+  const filtered = students.filter((s) => {
+    const matchSearch = s.name.toLowerCase().includes(search.toLowerCase()) || s.id.toLowerCase().includes(search.toLowerCase());
+    const matchSchool = !schoolFilter || s.schoolId === schoolFilter;
+    return matchSearch && matchSchool;
+  });
+
+  const handleAdd = async (form) => {
     await onAddStudent(form);
-    setForm({ schoolId: "", name: "", class: "", section: "", gender: "Male", dob: "", parent: "", mobile: "" });
     setShowAdd(false);
+  };
+
+  const handleEdit = async (form) => {
+    await onEditStudent(editItem.id, form);
+    setEditItem(null);
   };
 
   return (
@@ -1209,13 +1289,21 @@ function StudentsPage({ students, schools, onAddStudent, onDeleteStudent }) {
       </div>
       <div className="search-bar">
         <input className="search-input" placeholder="Search by name or ID…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div style={{ minWidth: 200 }}>
+          <SearchSelect
+            options={schools.map((sc) => ({ value: sc.id, label: `${sc.name} — ${sc.district}` }))}
+            value={schoolFilter}
+            onChange={setSchoolFilter}
+            placeholder="Filter by school…"
+          />
+        </div>
       </div>
       <div className="card">
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>ID</th><th>Name</th><th>School</th><th>Class</th><th>Gender</th><th>Parent</th><th>Mobile</th><th></th>
+                <th>ID</th><th>Name</th><th>School</th><th>Class</th><th>Gender</th><th>Parent</th><th>Mobile</th><th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1231,7 +1319,10 @@ function StudentsPage({ students, schools, onAddStudent, onDeleteStudent }) {
                     <td>{s.parent}</td>
                     <td>{s.mobile}</td>
                     <td>
-                      <button className="btn btn-sm" onClick={() => onDeleteStudent(s.id)}>🗑</button>
+                      <div className="action-cell">
+                        <button className="btn-icon" title="Edit" onClick={() => setEditItem(s)}>✏️</button>
+                        <button className="btn-icon danger" title="Delete" onClick={() => setDeleteId(s.id)}>🗑️</button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1245,54 +1336,305 @@ function StudentsPage({ students, schools, onAddStudent, onDeleteStudent }) {
       </div>
 
       {showAdd && (
-        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <span className="modal-title">Add Student</span>
-              <button className="modal-close" onClick={() => setShowAdd(false)}>×</button>
-            </div>
-            <div className="grid2">
-              <div className="form-group" style={{ gridColumn: "1 / -1" }}>
-                <label className="form-label">School</label>
-                <select className="form-select" value={form.schoolId} onChange={(e) => setForm((f) => ({ ...f, schoolId: e.target.value }))}>
-                  <option value="">— Select school —</option>
-                  {schools.map((sc) => <option key={sc.id} value={sc.id}>{sc.name}</option>)}
-                </select>
-              </div>
-              {[
-                { key: "name", label: "Student Name" },
-                { key: "parent", label: "Parent Name" },
-                { key: "class", label: "Class" },
-                { key: "section", label: "Section" },
-                { key: "dob", label: "Date of Birth", type: "date" },
-                { key: "mobile", label: "Mobile Number" },
-              ].map(({ key, label, type }) => (
-                <div className="form-group" key={key}>
-                  <label className="form-label">{label}</label>
-                  <input className="form-input" type={type || "text"} value={form[key]} onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))} />
-                </div>
-              ))}
-              <div className="form-group">
-                <label className="form-label">Gender</label>
-                <select className="form-select" value={form.gender} onChange={(e) => setForm((f) => ({ ...f, gender: e.target.value }))}>
-                  <option>Male</option><option>Female</option><option>Other</option>
-                </select>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10, marginTop: 12, justifyContent: "flex-end" }}>
-              <button className="btn" onClick={() => setShowAdd(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleAdd}>Add Student</button>
-            </div>
-          </div>
-        </div>
+        <StudentFormModal title="Add Student" initial={{ schoolId: "", name: "", class: "", section: "", gender: "Male", dob: "", parent: "", mobile: "" }} schools={schools} onSave={handleAdd} onClose={() => setShowAdd(false)} />
+      )}
+      {editItem && (
+        <StudentFormModal title="Edit Student" initial={{ schoolId: editItem.schoolId, name: editItem.name, class: editItem.class, section: editItem.section, gender: editItem.gender, dob: editItem.dob, parent: editItem.parent, mobile: editItem.mobile }} schools={schools} onSave={handleEdit} onClose={() => setEditItem(null)} />
+      )}
+      {deleteId && (
+        <ConfirmDialog message="This student record will be removed from the active list." onConfirm={() => { onDeleteStudent(deleteId); setDeleteId(null); }} onCancel={() => setDeleteId(null)} />
       )}
     </div>
   );
 }
 
-function ScreeningsPage({ screenings, students, schools, onViewReport }) {
+function PhotoLightbox({ photos, initialIndex, onClose }) {
+  const [index, setIndex] = useState(initialIndex);
+  const [rotation, setRotation] = useState(0);
+
+  useEffect(() => { setRotation(0); }, [index]);
+
+  useEffect(() => {
+    const handleKey = (e) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight") setIndex((i) => (i + 1) % photos.length);
+      if (e.key === "ArrowLeft") setIndex((i) => (i - 1 + photos.length) % photos.length);
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [photos.length, onClose]);
+
+  const current = photos[index];
+  return (
+    <div className="lightbox" onClick={onClose}>
+      <div className="lightbox-top">
+        <div>
+          <div className="lightbox-title">{current.label}</div>
+          <div className="lightbox-counter">{index + 1} of {photos.length}</div>
+        </div>
+        <button className="lightbox-close" onClick={onClose}>×</button>
+      </div>
+      <div className="lightbox-body" onClick={(e) => e.stopPropagation()}>
+        <img src={current.src} alt={current.label} style={{ transform: `rotate(${rotation}deg)` }} />
+        {photos.length > 1 && (
+          <>
+            <button className="lightbox-nav prev" onClick={() => setIndex((i) => (i - 1 + photos.length) % photos.length)}>‹</button>
+            <button className="lightbox-nav next" onClick={() => setIndex((i) => (i + 1) % photos.length)}>›</button>
+          </>
+        )}
+      </div>
+      <div className="lightbox-bottom" onClick={(e) => e.stopPropagation()}>
+        <button className="lightbox-btn" title="Rotate left" onClick={() => setRotation((r) => r - 90)}>↶</button>
+        <div className="lightbox-dots">
+          {photos.map((_, i) => (
+            <button key={i} className={`lightbox-dot${i === index ? " active" : ""}`} onClick={() => setIndex(i)} />
+          ))}
+        </div>
+        <button className="lightbox-btn" title="Rotate right" onClick={() => setRotation((r) => r + 90)}>↷</button>
+      </div>
+    </div>
+  );
+}
+
+function ScreeningDetailModal({ screening, student, school, onClose }) {
+  const [lightboxIndex, setLightboxIndex] = useState(-1);
+
+  if (!screening) return null;
+  const allPhotos = screening.photos || {};
+  const photoSlots = ["Front View", "Upper Arch", "Lower Arch", "Tongue", "Lesion"];
+  const availablePhotos = photoSlots.filter((s) => allPhotos[s]).map((s) => ({ label: s, src: allPhotos[s] }));
+
+  return (
+    <>
+      {lightboxIndex >= 0 && availablePhotos.length > 0 && (
+        <PhotoLightbox photos={availablePhotos} initialIndex={lightboxIndex} onClose={() => setLightboxIndex(-1)} />
+      )}
+      <div className="modal-overlay" onClick={onClose}>
+        <div className="modal" style={{ maxWidth: 680 }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <div>
+              <div className="modal-title">Screening Details</div>
+              <div style={{ fontSize: 11, color: "var(--color-text-secondary)", marginTop: 2 }}>ID: {screening.id}</div>
+            </div>
+            <button className="modal-close" onClick={onClose}>×</button>
+          </div>
+
+          <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 16 }}>
+            <ScoreBadge score={screening.score} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 500 }}>{student?.name || "—"}</div>
+              <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{school?.name || "—"} — Class {student?.class} {student?.section}</div>
+              <div style={{ marginTop: 6 }}><HealthPill score={screening.score} /> <PriorityPill priority={screening.priority} /></div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="card-title">Patient & Screening Info</div>
+            <div className="pdf-field-grid">
+              <div className="pdf-field"><span className="pdf-field-label">Dentist</span><span className="pdf-field-value">{screening.dentist}</span></div>
+              <div className="pdf-field"><span className="pdf-field-label">Date</span><span className="pdf-field-value">{screening.date}</span></div>
+              <div className="pdf-field"><span className="pdf-field-label">Parent</span><span className="pdf-field-value">{student?.parent || "—"}</span></div>
+              <div className="pdf-field"><span className="pdf-field-label">Mobile</span><span className="pdf-field-value">{student?.mobile || "—"}</span></div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="card-title">Chief Complaint</div>
+            <div style={{ fontSize: 13 }}>{screening.chiefComplaint || "—"}</div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="card-title">Clinical Findings</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 16px", fontSize: 13 }}>
+              {[
+                { l: "Oral Hygiene", v: screening.oralHygiene },
+                { l: "Bleeding Gums", v: screening.bleedingGums },
+                { l: "Cavity Teeth", v: (screening.cavityTeeth || []).join(", ") },
+                { l: "Crowding", v: screening.crowding },
+                { l: "Missing Teeth", v: screening.missingTeeth },
+                { l: "Pockets", v: screening.pockets },
+                { l: "Impaction", v: screening.impaction },
+                { l: "Soft Tissue", v: screening.softTissue },
+                { l: "Cervical Abrasions", v: screening.cervicalAbrasions },
+                { l: "Stains", v: screening.stains },
+                { l: "Calculus", v: screening.calculus },
+                { l: "Others", v: screening.others },
+              ].map(({ l, v }) => (
+                <div key={l}><span style={{ color: "var(--color-text-secondary)", fontSize: 11 }}>{l}:</span> <span style={{ fontWeight: 500 }}>{v || "—"}</span></div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="card-title">Treatments Advised</div>
+            {(screening.treatmentsAdvised || []).length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {screening.treatmentsAdvised.map((t) => (
+                  <span key={t} className="pill" style={{ background: "#E1F5EE", color: "#085041", borderColor: "#1D9E75" }}>{t}</span>
+                ))}
+              </div>
+            ) : <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>None</div>}
+          </div>
+
+          <div className="card" style={{ marginBottom: 12 }}>
+            <div className="card-title">Photos</div>
+            {availablePhotos.length > 0 ? (
+              <div className="photo-grid">
+                {photoSlots.map((slot) => {
+                  const photoIdx = availablePhotos.findIndex((p) => p.label === slot);
+                  return (
+                    <div key={slot} className="photo-slot" style={{ cursor: allPhotos[slot] ? "pointer" : "default" }}
+                      onClick={() => { if (photoIdx >= 0) setLightboxIndex(photoIdx); }}>
+                      {allPhotos[slot] ? (
+                        <img src={allPhotos[slot]} alt={slot} />
+                      ) : (
+                        <span className="photo-label" style={{ color: "#ccc" }}>{slot}</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <div style={{ fontSize: 13, color: "var(--color-text-secondary)" }}>No photos captured</div>}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+            <button className="btn" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function CampCardHidden({ screening, student, school, innerRef }) {
+  if (!screening || !student || !school) return null;
+  const makeToothRow = (qL, qR) => {
+    const t = [];
+    for (let i = 8; i >= 1; i--) t.push(`${qL}${i}`);
+    for (let i = 1; i <= 8; i++) t.push(`${qR}${i}`);
+    return t;
+  };
+  const upperTeeth = makeToothRow(1, 2);
+  const lowerTeeth = makeToothRow(4, 3);
+  const cavityTeeth = screening.cavityTeeth || [];
+  const age = student.dob ? new Date().getFullYear() - new Date(student.dob).getFullYear() : "—";
+  return (
+    <div style={{ position: "fixed", left: "-9999px", top: 0 }}>
+      <div ref={innerRef} className="camp-card" style={{ width: 1000 }}>
+        <div className="camp-left">
+          <div style={{ textAlign: "center", marginBottom: 16 }}>
+            <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.1, fontFamily: "serif" }}>L<span style={{ color: "#1D9E75" }}>|</span>A</div>
+            <div style={{ fontSize: 9, letterSpacing: 4, fontWeight: 500, margin: "2px 0" }}>DENTAL CARE</div>
+            <div style={{ fontSize: 24, fontWeight: 700, lineHeight: 1.1, fontFamily: "serif" }}>E<span style={{ color: "#1D9E75" }}>|</span>L</div>
+          </div>
+          <div style={{ textAlign: "center", fontSize: 13, fontWeight: 600 }}>Ph : 93639 12131</div>
+          <div style={{ textAlign: "center", fontSize: 10, color: "#666", marginTop: 2 }}>Lakshmipuram Ext., West Tambaram</div>
+          <div style={{ textAlign: "center", fontSize: 14, fontWeight: 600, marginTop: 8 }}>Dr. Priyanka Paul, MDS, BDS</div>
+          <div style={{ textAlign: "center", marginTop: 8 }}><span style={{ display: "inline-block", background: "#f0f0f0", padding: "4px 20px", fontSize: 15, fontWeight: 700, border: "1.5px solid #999" }}>CAMP CARD</span></div>
+          <div style={{ marginTop: 18, fontSize: 12, lineHeight: 2.2 }}>
+            <div><strong>Name :</strong> {student.name}</div>
+            <div style={{ display: "flex", gap: 16 }}><span><strong>Age :</strong> {age}</span><span><strong>Gender :</strong> {student.gender}</span></div>
+            <div><strong>School :</strong> {school.name}</div>
+            <div><strong>Class :</strong> {student.class} – {student.section}</div>
+            <div><strong>Ph No :</strong> {student.mobile}</div>
+          </div>
+        </div>
+        <div className="camp-middle">
+          <div className="camp-field" style={{ marginBottom: 10, borderBottom: "none" }}><span className="camp-field-label" style={{ fontSize: 13 }}>Chief Complaint :</span><div style={{ marginTop: 4, minHeight: 18 }}>{screening.chiefComplaint || "—"}</div></div>
+          <div style={{ marginBottom: 14 }}>
+            <div className="camp-field-label" style={{ marginBottom: 6 }}>Cavity:</div>
+            <div className="camp-tooth-chart">
+              {[upperTeeth, lowerTeeth].map((row, ri) => (<div key={ri} className="camp-tooth-row">{row.map((id, i) => (<span key={id} className={`camp-tooth${cavityTeeth.includes(id) ? " affected" : ""}`} style={i === 7 ? { marginRight: 8 } : {}}>{id.slice(1)}</span>))}</div>))}
+            </div>
+          </div>
+          <div className="camp-field-list">
+            {[{ l: "Oral Hygiene :", v: screening.oralHygiene }, { l: "Bleeding Gums :", v: screening.bleedingGums }, { l: "Crowding / Proclination / Spacing :", v: screening.crowding }, { l: "Missing teeth :", v: screening.missingTeeth }, { l: "Pockets :", v: screening.pockets }, { l: "Impaction :", v: screening.impaction }, { l: "Soft tissue :", v: screening.softTissue }, { l: "Cervical abrasions :", v: screening.cervicalAbrasions }, { l: "Stains :", v: screening.stains }, { l: "Calculus :", v: screening.calculus }, { l: "Others :", v: screening.others }].map(({ l, v }) => (<div key={l} className="camp-field"><span className="camp-field-label">{l}</span> {v || "—"}</div>))}
+          </div>
+        </div>
+        <div className="camp-right">
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14 }}>Treatments Advised</div>
+          <div className="camp-treatments">
+            {TREATMENTS_LIST.map((t) => (<div key={t} className="camp-treatment-row"><span style={{ fontSize: 12 }}>{t}</span><span className={`camp-checkbox${(screening.treatmentsAdvised || []).includes(t) ? " checked" : ""}`}>{(screening.treatmentsAdvised || []).includes(t) ? "✓" : ""}</span></div>))}
+          </div>
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16, fontSize: 28 }}><span>😀</span><span>🦷</span><span>🧑‍⚕️</span></div>
+        </div>
+        <div className="camp-footer" style={{ gridColumn: "1 / -1", padding: "12px 20px" }}>
+          <div><div style={{ fontWeight: 500, color: "#333" }}>{screening.dentist}</div><div>Date: {screening.date}</div><div>ID: {screening.id}</div></div>
+          <div style={{ textAlign: "right" }}><div style={{ marginBottom: 4 }}>Score: {screening.score}/100</div><HealthPill score={screening.score} /></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getWhatsAppMsg(screening, student) {
+  return `Dear ${student.parent || "Parent"},\n\n` +
+    `Dental screening for *${student.name}* (Class ${student.class}-${student.section}) has been completed at LA'EL DENTAL CARE.\n\n` +
+    `Screening ID: ${screening.id}\nDate: ${screening.date}\nDentist: ${screening.dentist}\n` +
+    `Oral Health Score: *${screening.score}/100*\nStatus: ${HEALTH_BADGE(screening.score).label}\nPriority: ${screening.priority}\n` +
+    ((screening.treatmentsAdvised || []).length > 0 ? `\nTreatments Advised:\n${screening.treatmentsAdvised.map(t => `- ${t}`).join("\n")}\n` : "") +
+    `\nPlease visit LA'EL DENTAL CARE for follow-up.\nPh: 93639 12131\nLakshmipuram Ext., West Tambaram`;
+}
+
+async function generatePDFFromRef(ref, screeningId) {
+  const el = ref.current;
+  if (!el) return null;
+  const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: "#fff" });
+  const imgData = canvas.toDataURL("image/jpeg", 0.95);
+  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const m = 15;
+  const pdfW = pdf.internal.pageSize.getWidth() - m * 2;
+  const pdfH = pdf.internal.pageSize.getHeight() - m * 2;
+  const ratio = Math.min(pdfW / canvas.width, pdfH / canvas.height);
+  const w = canvas.width * ratio;
+  const h = canvas.height * ratio;
+  pdf.addImage(imgData, "JPEG", m + (pdfW - w) / 2, m + (pdfH - h) / 2, w, h);
+  return pdf;
+}
+
+function ScreeningsPage({ screenings, students, schools, onDeleteScreening }) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
+  const [schoolFilter, setSchoolFilter] = useState("");
+  const [studentFilter, setStudentFilter] = useState("");
+  const [deleteId, setDeleteId] = useState(null);
+  const [viewItem, setViewItem] = useState(null);
+  const [pdfScreening, setPdfScreening] = useState(null);
+  const [pdfAction, setPdfAction] = useState(null);
+  const campRef = useRef(null);
+
+  const pdfStudent = pdfScreening ? students.find((st) => st.id === pdfScreening.studentId) : null;
+  const pdfSchool = pdfStudent ? schools.find((sc) => sc.id === pdfStudent.schoolId) : null;
+
+  useEffect(() => {
+    if (!pdfScreening || !pdfAction || !campRef.current) return;
+    const timer = setTimeout(async () => {
+      try {
+        const pdf = await generatePDFFromRef(campRef, pdfScreening.id);
+        if (!pdf) return;
+        if (pdfAction === "download") {
+          pdf.save(`CampCard_${pdfScreening.id}.pdf`);
+        } else if (pdfAction === "whatsapp") {
+          const phone = pdfStudent?.mobile?.replace(/\D/g, "") || "";
+          const countryPhone = phone.startsWith("91") ? phone : `91${phone}`;
+          const blob = pdf.output("blob");
+          const file = new File([blob], `CampCard_${pdfScreening.id}.pdf`, { type: "application/pdf" });
+          if (navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({ text: getWhatsAppMsg(pdfScreening, pdfStudent), files: [file] });
+          } else {
+            pdf.save(`CampCard_${pdfScreening.id}.pdf`);
+            window.open(`https://wa.me/${countryPhone}?text=${encodeURIComponent(getWhatsAppMsg(pdfScreening, pdfStudent))}`, "_blank");
+          }
+        }
+      } finally {
+        setPdfScreening(null);
+        setPdfAction(null);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [pdfScreening, pdfAction, pdfStudent]);
+
+  const filteredStudentsBySchool = schoolFilter ? students.filter((st) => st.schoolId === schoolFilter) : students;
 
   const filtered = screenings.filter((s) => {
     const student = students.find((st) => st.id === s.studentId);
@@ -1301,7 +1643,9 @@ function ScreeningsPage({ screenings, students, schools, onViewReport }) {
       (student?.name || "").toLowerCase().includes(search.toLowerCase()) ||
       s.dentist.toLowerCase().includes(search.toLowerCase());
     const matchFilter = filter === "All" || HEALTH_BADGE(s.score).label === filter;
-    return matchSearch && matchFilter;
+    const matchSchool = !schoolFilter || student?.schoolId === schoolFilter;
+    const matchStudent = !studentFilter || s.studentId === studentFilter;
+    return matchSearch && matchFilter && matchSchool && matchStudent;
   });
 
   return (
@@ -1310,8 +1654,14 @@ function ScreeningsPage({ screenings, students, schools, onViewReport }) {
         <div className="page-title">All Screenings</div>
         <div className="page-sub">{screenings.length} screenings recorded</div>
       </div>
-      <div className="search-bar">
+      <div className="search-bar" style={{ flexWrap: "wrap" }}>
         <input className="search-input" placeholder="Search by ID, student, or dentist…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div style={{ minWidth: 180 }}>
+          <SearchSelect options={schools.map((sc) => ({ value: sc.id, label: `${sc.name} — ${sc.district}` }))} value={schoolFilter} onChange={(v) => { setSchoolFilter(v); setStudentFilter(""); }} placeholder="Filter by school…" />
+        </div>
+        <div style={{ minWidth: 180 }}>
+          <SearchSelect options={filteredStudentsBySchool.map((st) => ({ value: st.id, label: `${st.name} (${st.class}-${st.section})` }))} value={studentFilter} onChange={setStudentFilter} placeholder="Filter by student…" />
+        </div>
         <select className="form-select" style={{ width: "auto" }} value={filter} onChange={(e) => setFilter(e.target.value)}>
           <option>All</option>
           <option>Excellent</option>
@@ -1342,7 +1692,12 @@ function ScreeningsPage({ screenings, students, schools, onViewReport }) {
                     <td><HealthPill score={s.score} /></td>
                     <td><PriorityPill priority={s.priority} /></td>
                     <td>
-                      <button className="btn btn-sm" onClick={() => onViewReport(s)}>📄 Report</button>
+                      <div className="action-cell">
+                        <button className="btn-icon" title="View Details" onClick={() => setViewItem(s)}>👁️</button>
+                        <button className="btn-icon" title="Download PDF" onClick={() => { setPdfScreening(s); setPdfAction("download"); }}>📥</button>
+                        <button className="btn-icon" title="Share WhatsApp" onClick={() => { setPdfScreening(s); setPdfAction("whatsapp"); }} style={{ color: "#25D366" }}>💬</button>
+                        <button className="btn-icon danger" title="Delete" onClick={() => setDeleteId(s.id)}>🗑️</button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -1354,6 +1709,15 @@ function ScreeningsPage({ screenings, students, schools, onViewReport }) {
           </table>
         </div>
       </div>
+      {viewItem && (
+        <ScreeningDetailModal screening={viewItem} student={students.find((st) => st.id === viewItem.studentId)} school={schools.find((sc) => sc.id === (students.find((st) => st.id === viewItem.studentId) || {}).schoolId)} onClose={() => setViewItem(null)} />
+      )}
+      {pdfScreening && pdfStudent && pdfSchool && (
+        <CampCardHidden screening={pdfScreening} student={pdfStudent} school={pdfSchool} innerRef={campRef} />
+      )}
+      {deleteId && (
+        <ConfirmDialog message="This screening record will be removed from the active list." onConfirm={() => { onDeleteScreening(deleteId); setDeleteId(null); }} onCancel={() => setDeleteId(null)} />
+      )}
     </div>
   );
 }
@@ -1448,10 +1812,8 @@ function LoginPage({ onLogin }) {
     <div className="login-page">
       <div className="login-card">
         <div className="login-logo">
-          <div className="login-logo-text">
-            L<span style={{ color: "#1D9E75" }}>|</span>A E<span style={{ color: "#1D9E75" }}>|</span>L
-          </div>
-          <div className="login-logo-sub">LA EL Dental Care</div>
+          <img src="/lael_logo.png" alt="LA'EL" style={{ width: 72, height: 72, borderRadius: 12, objectFit: "contain", marginBottom: 8 }} />
+          <div className="login-logo-sub">LA'EL DENTAL CARE</div>
           <div className="login-logo-addr">Lakshmipuram Ext., West Tambaram</div>
         </div>
         <form onSubmit={handleSubmit}>
@@ -1480,10 +1842,8 @@ export default function App() {
   const [students, setStudents] = useState([]);
   const [screenings, setScreenings] = useState([]);
   const [showScreeningForm, setShowScreeningForm] = useState(false);
-  const [reportScreening, setReportScreening] = useState(null);
   const [mobileMenu, setMobileMenu] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
-  const [dbStatus, setDbStatus] = useState(null);
 
   const handleLogout = useCallback(() => {
     localStorage.removeItem(AUTH_KEY);
@@ -1496,7 +1856,6 @@ export default function App() {
     Promise.all([api.getSchools(), api.getStudents(), api.getScreenings()])
       .then(([sc, st, scr]) => { setSchools(sc); setStudents(st); setScreenings(scr); })
       .finally(() => setDataLoading(false));
-    api.getDbStatus().then(setDbStatus).catch(() => { });
   }, [authed]);
 
   const handleAddSchool = async (data) => {
@@ -1521,18 +1880,31 @@ export default function App() {
     setStudents((prev) => prev.filter((s) => s.id !== id));
   };
 
+  const handleEditSchool = async (id, data) => {
+    const updated = await api.updateSchool(id, data);
+    setSchools((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+  };
+
+  const handleEditStudent = async (id, data) => {
+    const updated = await api.updateStudent(id, data);
+    setStudents((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+  };
+
+  const handleDeleteScreening = async (id) => {
+    await api.deleteScreening(id);
+    setScreenings((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleEditScreening = async (id, data) => {
+    const updated = await api.updateScreening(id, data);
+    setScreenings((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+  };
+
   const handleSaveScreening = async (screening) => {
     const saved = await api.addScreening(screening);
     setScreenings((prev) => [saved, ...prev]);
     setPage("screenings");
   };
-
-  const handleViewReport = (screening) => {
-    setReportScreening(screening);
-  };
-
-  const reportStudent = reportScreening ? students.find((s) => s.id === reportScreening.studentId) : null;
-  const reportSchool = reportStudent ? schools.find((s) => s.id === reportStudent.schoolId) : null;
 
   if (!authed) {
     return (
@@ -1574,10 +1946,12 @@ export default function App() {
       <div className="app">
         <div className={`menu-overlay${mobileMenu ? " open" : ""}`} onClick={() => setMobileMenu(false)} />
         <div className={`sidebar${mobileMenu ? " mobile-open" : ""}`}>
-          <div className="sidebar-header">
-            <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "serif", letterSpacing: 1 }}>L<span style={{ color: "#1D9E75" }}>|</span>A E<span style={{ color: "#1D9E75" }}>|</span>L</div>
-            <div className="sidebar-logo">LA EL Dental Care</div>
-            <div className="sidebar-sub">Lakshmipuram Ext., West Tambaram</div>
+          <div className="sidebar-header" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <img src="/lael_logo.png" alt="LA'EL" style={{ width: 44, height: 44, borderRadius: 8, objectFit: "contain" }} />
+            <div>
+              <div className="sidebar-logo">LA'EL DENTAL CARE</div>
+              <div className="sidebar-sub">Lakshmipuram Ext., West Tambaram</div>
+            </div>
           </div>
           <nav className="sidebar-nav">
             {SIDEBAR_NAV.map(({ key, icon, label }) => (
@@ -1596,22 +1970,11 @@ export default function App() {
             ))}
           </nav>
           <div style={{ padding: "1rem", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
-            <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Dr. Priyanka Paul</div>
+            <div style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>Dr. Priyanka Paul, MDS, BDS</div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
               <span className="badge-role">Dentist</span>
               <button className="btn btn-sm" onClick={handleLogout} style={{ fontSize: 11, padding: "3px 10px" }}>Logout</button>
             </div>
-            {dbStatus && (
-              <div style={{ marginTop: 10, padding: "6px 8px", background: dbStatus.connected ? "#EAF3DE" : "#FCEBEB", borderRadius: 6, fontSize: 10, lineHeight: 1.6, border: `0.5px solid ${dbStatus.connected ? "#639922" : "#E24B4A"}` }}>
-                <div style={{ fontWeight: 600, color: dbStatus.connected ? "#27500A" : "#791F1F" }}>
-                  {dbStatus.connected ? "● DB Connected" : "● DB Disconnected"}
-                </div>
-                <div style={{ color: "#5F5E5A" }}>
-                  {dbStatus.env === "production" ? "PROD" : "LOCAL"} — {dbStatus.host}:{dbStatus.port}
-                </div>
-                <div style={{ color: "#888780" }}>{dbStatus.database} ({dbStatus.user})</div>
-              </div>
-            )}
           </div>
         </div>
 
@@ -1637,14 +2000,14 @@ export default function App() {
 
           <div className="content">
             {page === "dashboard" && <Dashboard schools={schools} students={students} screenings={screenings} />}
-            {page === "schools" && <SchoolsPage schools={schools} onAddSchool={handleAddSchool} onDeleteSchool={handleDeleteSchool} />}
-            {page === "students" && <StudentsPage students={students} schools={schools} onAddStudent={handleAddStudent} onDeleteStudent={handleDeleteStudent} />}
+            {page === "schools" && <SchoolsPage schools={schools} students={students} onAddSchool={handleAddSchool} onDeleteSchool={handleDeleteSchool} onEditSchool={handleEditSchool} />}
+            {page === "students" && <StudentsPage students={students} schools={schools} onAddStudent={handleAddStudent} onDeleteStudent={handleDeleteStudent} onEditStudent={handleEditStudent} />}
             {page === "screenings" && (
               <ScreeningsPage
                 screenings={screenings}
                 students={students}
                 schools={schools}
-                onViewReport={handleViewReport}
+                onDeleteScreening={handleDeleteScreening}
               />
             )}
             {page === "reports" && <ReportsPage screenings={screenings} students={students} schools={schools} />}
@@ -1664,14 +2027,6 @@ export default function App() {
         />
       )}
 
-      {reportScreening && (
-        <PDFReportCard
-          screening={reportScreening}
-          student={reportStudent}
-          school={reportSchool}
-          onClose={() => setReportScreening(null)}
-        />
-      )}
     </>
   );
 }

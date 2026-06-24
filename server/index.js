@@ -49,7 +49,8 @@ async function initDB() {
       district VARCHAR(100) DEFAULT '',
       block VARCHAR(100) DEFAULT '',
       principal VARCHAR(255) DEFAULT '',
-      contact VARCHAR(20) DEFAULT ''
+      contact VARCHAR(20) DEFAULT '',
+      active_status TINYINT(1) DEFAULT 1
     )
   `);
 
@@ -64,6 +65,7 @@ async function initDB() {
       dob VARCHAR(20) DEFAULT '',
       parent VARCHAR(255) DEFAULT '',
       mobile VARCHAR(20) DEFAULT '',
+      active_status TINYINT(1) DEFAULT 1,
       FOREIGN KEY (schoolId) REFERENCES schools(id) ON DELETE CASCADE
     )
   `);
@@ -90,9 +92,15 @@ async function initDB() {
       priority VARCHAR(20) DEFAULT 'Routine',
       cavityTeeth JSON,
       treatmentsAdvised JSON,
+      active_status TINYINT(1) DEFAULT 1,
       FOREIGN KEY (studentId) REFERENCES students(id) ON DELETE CASCADE
     )
   `);
+
+  // Add active_status column to existing tables (safe to run multiple times)
+  for (const tbl of ["schools", "students", "screenings"]) {
+    await pool.query(`ALTER TABLE \`${tbl}\` ADD COLUMN active_status TINYINT(1) DEFAULT 1`).catch(() => {});
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS screening_photos (
@@ -106,7 +114,7 @@ async function initDB() {
   `);
 
   // Seed if empty
-  const [[{ count }]] = await pool.query("SELECT COUNT(*) AS count FROM schools");
+  const [[{ count }]] = await pool.query("SELECT COUNT(*) AS count FROM schools WHERE active_status = 1");
   if (count === 0) {
     console.log("Seeding initial data...");
     const schools = [
@@ -172,7 +180,7 @@ async function initDB() {
 
 // --- SCHOOLS ---
 app.get("/api/schools", async (req, res) => {
-  const [rows] = await pool.query("SELECT * FROM schools ORDER BY id");
+  const [rows] = await pool.query("SELECT * FROM schools WHERE active_status = 1 ORDER BY id");
   res.json(rows);
 });
 
@@ -184,14 +192,22 @@ app.post("/api/schools", async (req, res) => {
   res.json({ id, name, district: district || "", block: block || "", principal: principal || "", contact: contact || "" });
 });
 
+app.put("/api/schools/:id", async (req, res) => {
+  const { name, district, block, principal, contact } = req.body;
+  await pool.query("UPDATE schools SET name=?, district=?, block=?, principal=?, contact=? WHERE id=?",
+    [name, district || "", block || "", principal || "", contact || "", req.params.id]);
+  res.json({ id: req.params.id, name, district, block, principal, contact });
+});
+
 app.delete("/api/schools/:id", async (req, res) => {
-  await pool.query("DELETE FROM schools WHERE id = ?", [req.params.id]);
+  await pool.query("UPDATE schools SET active_status = 0 WHERE id = ?", [req.params.id]);
+  await pool.query("UPDATE students SET active_status = 0 WHERE schoolId = ?", [req.params.id]);
   res.json({ ok: true });
 });
 
 // --- STUDENTS ---
 app.get("/api/students", async (req, res) => {
-  const [rows] = await pool.query("SELECT * FROM students ORDER BY id");
+  const [rows] = await pool.query("SELECT * FROM students WHERE active_status = 1 ORDER BY id");
   res.json(rows);
 });
 
@@ -203,14 +219,21 @@ app.post("/api/students", async (req, res) => {
   res.json({ id, schoolId, name, class: cls || "", section: section || "", gender: gender || "", dob: dob || "", parent: parent || "", mobile: mobile || "" });
 });
 
+app.put("/api/students/:id", async (req, res) => {
+  const { schoolId, name, class: cls, section, gender, dob, parent, mobile } = req.body;
+  await pool.query("UPDATE students SET schoolId=?, name=?, `class`=?, section=?, gender=?, dob=?, parent=?, mobile=? WHERE id=?",
+    [schoolId, name, cls || "", section || "", gender || "", dob || "", parent || "", mobile || "", req.params.id]);
+  res.json({ id: req.params.id, schoolId, name, class: cls, section, gender, dob, parent, mobile });
+});
+
 app.delete("/api/students/:id", async (req, res) => {
-  await pool.query("DELETE FROM students WHERE id = ?", [req.params.id]);
+  await pool.query("UPDATE students SET active_status = 0 WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 });
 
 // --- SCREENINGS ---
 app.get("/api/screenings", async (req, res) => {
-  const [rows] = await pool.query("SELECT * FROM screenings ORDER BY date DESC, id DESC");
+  const [rows] = await pool.query("SELECT * FROM screenings WHERE active_status = 1 ORDER BY date DESC, id DESC");
   const [photos] = await pool.query("SELECT * FROM screening_photos");
 
   const photoMap = {};
@@ -271,13 +294,23 @@ app.post("/api/screenings", async (req, res) => {
   });
 });
 
+app.put("/api/screenings/:id", async (req, res) => {
+  const { dentist, date, chiefComplaint, oralHygiene, bleedingGums, crowding, missingTeeth,
+    pockets, impaction, softTissue, cervicalAbrasions, stains, calculus, others,
+    score, priority, cavityTeeth, treatmentsAdvised } = req.body;
+  await pool.query(
+    `UPDATE screenings SET dentist=?, date=?, chiefComplaint=?, oralHygiene=?, bleedingGums=?,
+      crowding=?, missingTeeth=?, pockets=?, impaction=?, softTissue=?, cervicalAbrasions=?,
+      stains=?, \`calculus\`=?, others=?, score=?, priority=?, cavityTeeth=?, treatmentsAdvised=? WHERE id=?`,
+    [dentist || "", date || "", chiefComplaint || "", oralHygiene || "", bleedingGums || "",
+      crowding || "", missingTeeth || "", pockets || "", impaction || "", softTissue || "",
+      cervicalAbrasions || "", stains || "", calculus || "", others || "", score || 0, priority || "Routine",
+      JSON.stringify(cavityTeeth || []), JSON.stringify(treatmentsAdvised || []), req.params.id]);
+  res.json({ id: req.params.id, ...req.body });
+});
+
 app.delete("/api/screenings/:id", async (req, res) => {
-  const [photos] = await pool.query("SELECT filePath FROM screening_photos WHERE screeningId = ?", [req.params.id]);
-  for (const p of photos) {
-    const fp = path.join(UPLOADS, p.filePath);
-    if (fs.existsSync(fp)) fs.unlinkSync(fp);
-  }
-  await pool.query("DELETE FROM screenings WHERE id = ?", [req.params.id]);
+  await pool.query("UPDATE screenings SET active_status = 0 WHERE id = ?", [req.params.id]);
   res.json({ ok: true });
 });
 
