@@ -304,11 +304,20 @@ app.get("/api/db-status", async (req, res) => {
   }
 });
 
+// --- SERVE REACT BUILD IN PRODUCTION ---
+const buildPath = path.join(__dirname, "..", "build");
+if (fs.existsSync(buildPath)) {
+  app.use(express.static(buildPath));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(buildPath, "index.html"));
+  });
+}
+
 // --- START ---
 const PORT = SERVER_PORT || 5000;
 initDB()
   .then(() => {
-    app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT}`));
+    app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT} [${process.env.NODE_ENV || "development"}]`));
   })
   .catch((err) => {
     console.error("Failed to initialize database:", err.message);

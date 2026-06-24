@@ -1493,9 +1493,10 @@ export default function App() {
   useEffect(() => {
     if (!authed) return;
     setDataLoading(true);
-    Promise.all([api.getSchools(), api.getStudents(), api.getScreenings(), api.getDbStatus()])
-      .then(([sc, st, scr, db]) => { setSchools(sc); setStudents(st); setScreenings(scr); setDbStatus(db); })
+    Promise.all([api.getSchools(), api.getStudents(), api.getScreenings()])
+      .then(([sc, st, scr]) => { setSchools(sc); setStudents(st); setScreenings(scr); })
       .finally(() => setDataLoading(false));
+    api.getDbStatus().then(setDbStatus).catch(() => {});
   }, [authed]);
 
   const handleAddSchool = async (data) => {
