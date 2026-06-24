@@ -1,8 +1,14 @@
+require("dotenv").config({
+  path: require("path").join(__dirname, process.env.NODE_ENV === "production" ? ".env.production" : ".env"),
+});
+
 const express = require("express");
 const mysql = require("mysql2/promise");
 const cors = require("cors");
 const fs = require("fs");
 const path = require("path");
+
+const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME, PORT: SERVER_PORT } = process.env;
 
 const app = express();
 app.use(cors());
@@ -24,20 +30,20 @@ async function nextId(prefix, table) {
 
 async function initDB() {
   const conn = await mysql.createConnection({
-    host: "localhost",
-    port: 3306,
-    user: "root",
-    password: "",
+    host: DB_HOST,
+    port: Number(DB_PORT),
+    user: DB_USER,
+    password: DB_PASSWORD || "",
   });
-  await conn.query("CREATE DATABASE IF NOT EXISTS lael_dental");
+  await conn.query(`CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\``);
   await conn.end();
 
   pool = mysql.createPool({
-    host: "localhost",
-    port: 3306,
-    user: "root",
-    password: "",
-    database: "lael_dental",
+    host: DB_HOST,
+    port: Number(DB_PORT),
+    user: DB_USER,
+    password: DB_PASSWORD || "",
+    database: DB_NAME,
     waitForConnections: true,
     connectionLimit: 10,
   });
@@ -282,7 +288,7 @@ app.delete("/api/screenings/:id", async (req, res) => {
 });
 
 // --- START ---
-const PORT = 5000;
+const PORT = SERVER_PORT || 5000;
 initDB()
   .then(() => {
     app.listen(PORT, () => console.log(`API server running on http://localhost:${PORT}`));
